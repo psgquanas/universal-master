@@ -1,9 +1,7 @@
-// src/hooks/use-permissions.ts
-// ─────────────────────────────────────────────────────────────────────────────
-// A centralized hook for requesting all app permissions.
-// Import and use individual request functions wherever needed.
-// ─────────────────────────────────────────────────────────────────────────────
-
+import {
+  getRecordingPermissionsAsync,
+  requestRecordingPermissionsAsync,
+} from 'expo-audio';
 import { requireOptionalNativeModule } from 'expo-modules-core';
 import { Platform } from 'react-native';
 
@@ -37,14 +35,7 @@ async function loadCamera() {
   }
 }
 
-async function loadAudio() {
-  if (isWeb) return null;
-  try {
-    return await import('expo-av');
-  } catch {
-    return null;
-  }
-}
+
 
 function normalizeModule(module: any) {
   if (!module) return null;
@@ -120,27 +111,23 @@ export async function getCameraPermission(): Promise<PermissionStatus> {
 // ── Microphone ────────────────────────────────────────────────────────────────
 export async function requestMicrophonePermission(): Promise<PermissionStatus> {
   if (isWeb) return 'granted';
-  const loaded = await loadAudio();
-  const Audio = normalizeModule(loaded);
-  if (!Audio || typeof Audio.requestPermissionsAsync !== 'function') return 'granted';
+
   try {
-    const { status } = await Audio.requestPermissionsAsync();
+    const { status } = await requestRecordingPermissionsAsync();
     return status as PermissionStatus;
   } catch {
-    return 'granted';
+    return 'denied';
   }
 }
 
 export async function getMicrophonePermission(): Promise<PermissionStatus> {
   if (isWeb) return 'granted';
-  const loaded = await loadAudio();
-  const Audio = normalizeModule(loaded);
-  if (!Audio || typeof Audio.getPermissionsAsync !== 'function') return 'granted';
+
   try {
-    const { status } = await Audio.getPermissionsAsync();
+    const { status } = await getRecordingPermissionsAsync();
     return status as PermissionStatus;
   } catch {
-    return 'granted';
+    return 'denied';
   }
 }
 

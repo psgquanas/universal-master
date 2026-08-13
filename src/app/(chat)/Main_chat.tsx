@@ -1,6 +1,6 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { BellOff, Check, CheckCheck, Pin, Search, SquarePen, Users } from 'lucide-react-native';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Animated, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 
 import { GradientWrapper } from '@/components/gradient-wrapper';
@@ -34,7 +34,7 @@ const STATUS_RING = ['#4361EE', '#7955D9'] as const;
 const CHAT_SECTIONS = ['Chats', 'Groups'] as const;
 
 // Helper to convert database record to Chat type
-const chatRecordToChat = (record: ChatRecord, currentUserId: string): Chat => {
+const chatRecordToChat = (record: ChatRecord): Chat => {
   const isGroup = record.type === 'group';
   let name = 'Unknown';
   if (isGroup) {
@@ -94,16 +94,14 @@ export default function ChatsScreen() {
   const [section, setSection] = useState<(typeof CHAT_SECTIONS)[number]>('Chats');
   const [chats, setChats] = useState<Chat[]>([]);
   const [loading, setLoading] = useState(true);
-  const [currentUserId, setCurrentUserId] = useState<string>('');
 
   const loadChats = useCallback(async () => {
     try {
       setLoading(true);
       const profile = await getCurrentProfile();
       if (profile?.id) {
-        setCurrentUserId(profile.id);
         const chatRecords = await getChatsForUser();
-        const converted = chatRecords.map((rec) => chatRecordToChat(rec, profile.id));
+        const converted = chatRecords.map(chatRecordToChat);
         setChats(converted);
       }
     } catch (error) {
@@ -285,9 +283,9 @@ function ChatAvatar({ chat, styles, bare }: { chat: Chat; styles: ReturnType<typ
 }
 
 function TypingIndicator({ styles, theme }: { styles: ReturnType<typeof createStyles>; theme: ReturnType<typeof useTheme> }) {
-  const dot1 = useRef(new Animated.Value(0.3)).current;
-  const dot2 = useRef(new Animated.Value(0.3)).current;
-  const dot3 = useRef(new Animated.Value(0.3)).current;
+  const [dot1] = useState(() => new Animated.Value(0.3));
+  const [dot2] = useState(() => new Animated.Value(0.3));
+  const [dot3] = useState(() => new Animated.Value(0.3));
 
   useEffect(() => {
     const animateDot = (value: Animated.Value, delay: number) =>
@@ -302,7 +300,7 @@ function TypingIndicator({ styles, theme }: { styles: ReturnType<typeof createSt
     const loops = [animateDot(dot1, 0), animateDot(dot2, 160), animateDot(dot3, 320)];
     loops.forEach((l) => l.start());
     return () => loops.forEach((l) => l.stop());
-  }, []);
+  }, [dot1, dot2, dot3]);
 
   return (
     <View style={styles.typingRow}>

@@ -153,7 +153,6 @@ export default function PulseHomeScreen() {
   }, []));
 
   useEffect(() => {
-    void refreshUnread();
     const channel = supabase.channel('home-unread-messages')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, () => { void refreshUnread(); })
       .subscribe();
@@ -327,10 +326,10 @@ function SharePicker({ visible, friends, theme, onClose, onSelect }: { visible: 
 // ---------- Moments / Stories ----------
 
 function StoryItem({ item, index, styles, onPress }: { item: Story; index: number; styles: ReturnType<typeof createStyles>; onPress: () => void }) {
-  const entranceOpacity = useRef(new Animated.Value(0)).current;
-  const entranceScale = useRef(new Animated.Value(0.75)).current;
-  const pulse = useRef(new Animated.Value(1)).current;
-  const pressScale = useRef(new Animated.Value(1)).current;
+  const [entranceOpacity] = useState(() => new Animated.Value(0));
+  const [entranceScale] = useState(() => new Animated.Value(0.75));
+  const [pulse] = useState(() => new Animated.Value(1));
+  const [pressScale] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     Animated.timing(entranceOpacity, { toValue: 1, duration: 360, delay: index * 65, useNativeDriver: true }).start();
@@ -402,11 +401,11 @@ function PulseCard({
   const [comment, setComment] = useState('');
   const lastTap = useRef(0);
 
-  const cardOpacity = useRef(new Animated.Value(0)).current;
-  const cardTranslate = useRef(new Animated.Value(18)).current;
-  const heartScale = useRef(new Animated.Value(0)).current;
-  const heartOpacity = useRef(new Animated.Value(0)).current;
-  const likeButtonScale = useRef(new Animated.Value(1)).current;
+  const [cardOpacity] = useState(() => new Animated.Value(0));
+  const [cardTranslate] = useState(() => new Animated.Value(18));
+  const [heartScale] = useState(() => new Animated.Value(0));
+  const [heartOpacity] = useState(() => new Animated.Value(0));
+  const [likeButtonScale] = useState(() => new Animated.Value(1));
 
   useEffect(() => {
     Animated.timing(cardOpacity, { toValue: 1, duration: 420, delay: Math.min(index, 4) * 70, useNativeDriver: true }).start();

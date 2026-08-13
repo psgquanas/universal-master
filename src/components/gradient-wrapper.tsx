@@ -2,7 +2,7 @@ import React from 'react';
 import { View, type ViewProps } from 'react-native';
 
 type GradientWrapperProps = ViewProps & {
-  colors: ReadonlyArray<string>;
+  colors: readonly string[];
   start?: { x: number; y: number };
   end?: { x: number; y: number };
   children?: React.ReactNode;

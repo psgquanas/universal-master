@@ -77,7 +77,7 @@
           "cameraPermission": "Allow ChatApp to take a profile photo or status image."
         }
       ],
-      "expo-av",
+      "expo-audio",
       "expo-web-browser"
     ],
     "experiments": {
