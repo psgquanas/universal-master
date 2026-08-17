@@ -77,7 +77,7 @@ export default function TextStatusScreen() {
         try {
             const stickerText = placedStickers.map((sticker) => sticker.emoji).join(' ');
             await createStatusPost([text.trim(), stickerText].filter(Boolean).join('\n'));
-            router.back();
+            router.dismissTo('/(app)');
         } catch (error) {
             Alert.alert('Unable to share status', error instanceof Error ? error.message : 'Please try again.');
         } finally {

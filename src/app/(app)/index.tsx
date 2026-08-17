@@ -1,7 +1,7 @@
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Bookmark, Camera, CheckCircle2, Heart, MessageCircle, MoreHorizontal, Plus, Search, Share2, Sparkles, Users, X } from 'lucide-react-native';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, Dimensions, FlatList, Image, Modal, Pressable, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { Animated, Dimensions, FlatList, Image, Modal, Pressable, RefreshControl, StatusBar, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import { useVideoPlayer, VideoView } from 'expo-video';
@@ -12,6 +12,7 @@ import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useTheme } from '@/hooks/use-theme';
 import { getCurrentProfile, ProfileRecord } from '@/lib/profile';
 import { getUnreadMessageCount } from '@/lib/chats';
+import { subscribeToFeedChanges } from '@/lib/feed-events';
 import { addPostComment, addStoryComment, createStory, getConnectedFeed, getConnectedProfiles, getConnectedStories, sharePost, shareStory, togglePostLike, toggleStoryLike, uploadSocialMedia } from '@/lib/social';
 import { supabase } from '@/lib/supabase';
 
@@ -76,66 +77,72 @@ export default function PulseHomeScreen() {
   const [storyViewer, setStoryViewer] = useState<Story | null>(null);
   const [friends, setFriends] = useState<{ id: string; full_name?: string | null; username?: string | null; avatar_url?: string | null }[]>([]);
   const [shareTarget, setShareTarget] = useState<{ kind: 'post' | 'story'; id: string } | null>(null);
-  const [homeRefreshKey, setHomeRefreshKey] = useState(0);
-  const hasFocusedHome = useRef(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const latestHomeLoad = useRef(0);
   const visiblePulses = pulses.filter((pulse) => `${pulse.author} ${pulse.channel} ${pulse.text}`.toLowerCase().includes(query.toLowerCase()));
 
-  useEffect(() => {
-    let active = true;
+  const loadHomeData = useCallback(async () => {
+    const loadId = ++latestHomeLoad.current;
 
-    const loadProfile = async () => {
-      try {
-        const currentProfile = await getCurrentProfile();
-        if (!active) return;
-        setProfile(currentProfile);
+    try {
+      const currentProfile = await getCurrentProfile();
+      if (loadId !== latestHomeLoad.current) return;
+      setProfile(currentProfile);
 
-        if (!currentProfile?.id) return;
-        const [storyRows, feedRows, connectedProfiles] = await Promise.all([getConnectedStories(currentProfile.id), getConnectedFeed(currentProfile.id), getConnectedProfiles(currentProfile.id)]);
-        const friendStories = storyRows.filter((story: any) => story.author_id !== currentProfile.id).map((story: any, index) => {
-          const friendName = story.profiles?.full_name?.trim() || story.profiles?.username || 'Friend';
-          return {
-            id: story.id,
-            name: friendName,
-            initials: getDisplayInitials(friendName),
-            avatar: story.profiles?.avatar_url || undefined,
-            color: ['#6D5DFB', '#E85AAD', '#00A6A6', '#F59E55'][index % 4],
-            content: story.content,
-            contentType: story.content_type,
-            mediaUrl: story.media_url,
-            authorId: story.author_id,
-          };
-        });
-
-        const ownStory: Story = {
-          id: 'your-pulse',
-          name: 'Your pulse',
-          initials: '+',
-          color: '#6D5DFB',
-          own: true,
-          avatar: currentProfile.avatar_url || undefined,
-        };
-
-        if (active) {
-          setStories([ownStory, ...friendStories]);
-          setFriends(connectedProfiles);
-          setPulses(feedRows.map((post: any, index: number) => {
-            const author = post.profiles?.full_name?.trim() || post.profiles?.username || 'Universal user';
-            const liked = (post.likes ?? []).some((like: any) => like.user_id === currentProfile.id);
-            const comment = post.comments?.[0];
-            return { id: post.id, author, initials: getDisplayInitials(author), avatar: post.profiles?.avatar_url || undefined, ago: new Date(post.created_at).toLocaleDateString(), text: post.content || '', images: post.media_url ? [post.media_url] : undefined, likes: post.likes?.length ?? 0, likedBy: post.likes?.map((like: any) => like.user_id) ?? [], comments: post.comments?.length ?? 0, topComment: comment ? { author: comment.profiles?.full_name || comment.profiles?.username || 'Friend', text: comment.content } : undefined, reaction: liked ? 'like' : null, color: ['#6D5DFB', '#E85AAD', '#00A6A6', '#F59E55'][index % 4], channel: 'Your circle' };
-          }));
-        }
-      } catch (error) {
-        console.warn('[home] could not load home data', error);
+      if (!currentProfile?.id) {
+        setStories([]);
+        setFriends([]);
+        setPulses([]);
+        return;
       }
-    };
 
-    loadProfile();
+      const [storyRows, feedRows, connectedProfiles] = await Promise.all([
+        getConnectedStories(currentProfile.id),
+        getConnectedFeed(currentProfile.id),
+        getConnectedProfiles(currentProfile.id),
+      ]);
+      if (loadId !== latestHomeLoad.current) return;
 
-    return () => {
-      active = false;
-    };
-  }, [homeRefreshKey]);
+      const friendStories = storyRows.filter((story: any) => story.author_id !== currentProfile.id).map((story: any, index) => {
+        const friendName = story.profiles?.full_name?.trim() || story.profiles?.username || 'Friend';
+        return {
+          id: story.id,
+          name: friendName,
+          initials: getDisplayInitials(friendName),
+          avatar: story.profiles?.avatar_url || undefined,
+          color: ['#6D5DFB', '#E85AAD', '#00A6A6', '#F59E55'][index % 4],
+          content: story.content,
+          contentType: story.content_type,
+          mediaUrl: story.media_url,
+          authorId: story.author_id,
+        };
+      });
+
+      const ownStory: Story = {
+        id: 'your-pulse',
+        name: 'Your pulse',
+        initials: '+',
+        color: '#6D5DFB',
+        own: true,
+        avatar: currentProfile.avatar_url || undefined,
+      };
+
+      setStories([ownStory, ...friendStories]);
+      setFriends(connectedProfiles);
+      setPulses(feedRows.map((post: any, index: number) => {
+        const author = post.profiles?.full_name?.trim() || post.profiles?.username || 'Universal user';
+        const liked = (post.likes ?? []).some((like: any) => like.user_id === currentProfile.id);
+        const comment = post.comments?.[0];
+        return { id: post.id, author, initials: getDisplayInitials(author), avatar: post.profiles?.avatar_url || undefined, ago: new Date(post.created_at).toLocaleDateString(), text: post.content || '', images: post.media_url ? [post.media_url] : undefined, likes: post.likes?.length ?? 0, likedBy: post.likes?.map((like: any) => like.user_id) ?? [], comments: post.comments?.length ?? 0, topComment: comment ? { author: comment.profiles?.full_name || comment.profiles?.username || 'Friend', text: comment.content } : undefined, reaction: liked ? 'like' : null, color: ['#6D5DFB', '#E85AAD', '#00A6A6', '#F59E55'][index % 4], channel: 'Your circle' };
+      }));
+    } catch (error) {
+      if (loadId === latestHomeLoad.current) console.warn('[home] could not load home data', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    return () => { latestHomeLoad.current += 1; };
+  }, []);
 
   const refreshUnread = useCallback(async () => {
     try {
@@ -145,12 +152,18 @@ export default function PulseHomeScreen() {
     }
   }, []);
 
+  const refreshHome = useCallback(async () => {
+    setRefreshing(true);
+    try {
+      await Promise.all([loadHomeData(), refreshUnread()]);
+    } finally {
+      setRefreshing(false);
+    }
+  }, [loadHomeData, refreshUnread]);
+
   useFocusEffect(useCallback(() => { void refreshUnread(); }, [refreshUnread]));
 
-  useFocusEffect(useCallback(() => {
-    if (hasFocusedHome.current) setHomeRefreshKey((key) => key + 1);
-    else hasFocusedHome.current = true;
-  }, []));
+  useFocusEffect(useCallback(() => { void loadHomeData(); }, [loadHomeData]));
 
   useEffect(() => {
     const channel = supabase.channel('home-unread-messages')
@@ -158,6 +171,18 @@ export default function PulseHomeScreen() {
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
   }, [refreshUnread]);
+
+  useEffect(() => {
+    const channel = supabase.channel('home-feed-updates')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, () => { void loadHomeData(); })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'stories' }, () => { void loadHomeData(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'post_likes' }, () => { void loadHomeData(); })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'post_comments' }, () => { void loadHomeData(); })
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [loadHomeData]);
+
+  useEffect(() => subscribeToFeedChanges(() => { void loadHomeData(); }), [loadHomeData]);
 
   const toggleReaction = async (id: string, type: ReactionType) => {
     const current = pulses.find((pulse) => pulse.id === id);
@@ -197,6 +222,15 @@ export default function PulseHomeScreen() {
         keyExtractor={(item) => item.id}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.feed}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refreshHome}
+            colors={[theme.primary]}
+            progressBackgroundColor={theme.backgroundElement}
+            tintColor={theme.primary}
+          />
+        }
         ListHeaderComponent={
           <>
             <View style={styles.header}>
@@ -282,7 +316,7 @@ export default function PulseHomeScreen() {
           </View>
         </Pressable>
       </Modal>
-      <StoryComposer visible={storyComposerOpen} theme={theme} onClose={() => setStoryComposerOpen(false)} onSaved={() => { setStoryComposerOpen(false); setHomeRefreshKey((value) => value + 1); }} />
+      <StoryComposer visible={storyComposerOpen} theme={theme} onClose={() => setStoryComposerOpen(false)} onSaved={() => { setStoryComposerOpen(false); void loadHomeData(); }} />
       <StoryViewer story={storyViewer} theme={theme} onClose={() => setStoryViewer(null)} onShare={(id) => { setStoryViewer(null); setShareTarget({ kind: 'story', id }); }} />
       <SharePicker visible={Boolean(shareTarget)} friends={friends} theme={theme} onClose={() => setShareTarget(null)} onSelect={async (recipientId) => { if (!shareTarget) return; if (shareTarget.kind === 'post') await sharePost(shareTarget.id, recipientId); else await shareStory(shareTarget.id, recipientId); setShareTarget(null); }} />
     </SafeAreaView>

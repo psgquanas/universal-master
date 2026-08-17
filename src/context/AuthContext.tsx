@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState } from 'react';
 
 type SignUpDetails = {
     fullName: string;
-    phone: string;
+    phone?: string;   // stored as metadata only — not used for auth or OTP
     gender: string;
     username?: string;
 };
@@ -50,20 +50,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const signUpWithEmail = async (email: string, password: string, details: SignUpDetails) => {
         const normalizedEmail = email.trim().toLowerCase();
+        console.log('[auth] signUp → sending request for', normalizedEmail);
         const { data, error } = await supabase.auth.signUp({
             email: normalizedEmail,
             password,
             options: {
                 data: {
                     full_name: details.fullName,
-                    phone: details.phone,
+                    ...(details.phone ? { phone: details.phone } : {}),
                     gender: details.gender,
                     ...(details.username ? { username: details.username } : {}),
                 },
             },
         });
-        if (error) return { needsEmailVerification: false, error };
-        return { needsEmailVerification: !data.session, error: null };
+        if (error) {
+            console.warn('[auth] signUp → error', error.message);
+            return { needsEmailVerification: false, error };
+        }
+        // If session is returned immediately, Supabase auto-confirmed the user
+        // (email confirmations are OFF in the dashboard — turn them ON).
+        const confirmed = Boolean(data.session);
+        console.log('[auth] signUp → success | user:', data.user?.id, '| auto-confirmed (no OTP sent):', confirmed);
+        return { needsEmailVerification: !confirmed, error: null };
     };
 
     const verifyEmailOtp = async (email: string, token: string) => {
@@ -76,10 +84,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     };
 
     const resendEmailVerification = async (email: string) => {
+        console.log('[auth] resend → sending OTP to', email.trim().toLowerCase());
         const { error } = await supabase.auth.resend({
             type: 'signup',
             email: email.trim().toLowerCase(),
         });
+        if (error) console.warn('[auth] resend → error', error.message);
+        else console.log('[auth] resend → OTP sent successfully');
         return { error };
     };
 

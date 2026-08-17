@@ -1,5 +1,6 @@
 import { getCurrentProfile } from '@/lib/profile';
 import { supabase } from '@/lib/supabase';
+import { notifyFeedChanged } from '@/lib/feed-events';
 
 export interface FeedPostRecord {
   id: string;
@@ -48,5 +49,6 @@ export async function createStatusPost(content: string): Promise<FeedPostRecord 
     throw error;
   }
 
+  notifyFeedChanged();
   return (data as FeedPostRecord | null) ?? null;
 }

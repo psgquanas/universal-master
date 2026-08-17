@@ -85,9 +85,10 @@ export default function SignUpScreen() {
     return null;
   };
 
+  // Phone is optional — only validate format if the user has started entering digits
   const validatePhone = (phone: string, country: Country): string | null => {
     const nationalDigits = getNationalPhoneDigits(phone, country);
-    if (nationalDigits.length === 0) return 'Phone number is required';
+    if (nationalDigits.length === 0) return null; // optional — empty is fine
     if (nationalDigits.length !== country.nationalLength) {
       const totalLength = getDialCodeDigits(country).length + country.nationalLength;
       return `Enter exactly ${country.nationalLength} digits after ${country.dialCode} (${totalLength} digits including country code)`;
@@ -120,7 +121,7 @@ export default function SignUpScreen() {
   const isValid =
     fullName.trim().length > 0 &&
     validateEmail(email) === null &&
-    validatePhone(phone, selectedCountry) === null &&
+    validatePhone(phone, selectedCountry) === null && // still catches partially-typed numbers
     gender !== null &&
     validatePassword(password) === null &&
     validateConfirmPassword(password, confirmPassword) === null &&
@@ -133,20 +134,21 @@ export default function SignUpScreen() {
     setSubmitting(true);
     try {
       const normalizedEmail = email.trim().toLowerCase();
-      const normalizedPhone = `${selectedCountry.dialCode}${getNationalPhoneDigits(phone, selectedCountry)}`;
-      const { needsEmailVerification, error } = await signUpWithEmail(normalizedEmail, password, {
+      const normalizedPhone = getNationalPhoneDigits(phone, selectedCountry).length === selectedCountry.nationalLength
+        ? `${selectedCountry.dialCode}${getNationalPhoneDigits(phone, selectedCountry)}`
+        : undefined;
+      const { error } = await signUpWithEmail(normalizedEmail, password, {
         fullName: fullName.trim(),
         phone: normalizedPhone,
         gender: gender!,
       });
       if (error) throw error;
-      if (needsEmailVerification) {
-        router.push({ pathname: '/(auth)/otp', params: { email: normalizedEmail } });
-      } else {
-        router.push('/(auth)/profile');
-      }
+      // Always route to OTP — email verification is required for all new accounts.
+      // Even if Supabase returns a session immediately (email confirmation disabled),
+      // we still send the user to OTP to enforce the verification step.
+      router.push({ pathname: '/(auth)/otp', params: { email: normalizedEmail } });
     } catch (error) {
-      console.warn('[phone] profile save failed', error);
+      console.warn('[signup] account creation failed', error);
       Alert.alert('Could not create account', error instanceof Error ? error.message : 'Please try again in a moment.');
     } finally {
       setSubmitting(false);
