@@ -1,4 +1,5 @@
 import { supabase } from '@/lib/supabase';
+import { notifyFeedChanged } from '@/lib/feed-events';
 
 export type SocialMediaType = 'image' | 'video';
 
@@ -57,6 +58,31 @@ export async function getConnectedFeed(userId: string) {
     supabase.from('post_comments').select('post_id, content, profiles!post_comments_author_id_fkey(full_name, username)').in('post_id', postIds).order('created_at', { ascending: false }),
   ]);
   return (posts ?? []).map((post: any) => ({ ...post, likes: (likes ?? []).filter((like) => like.post_id === post.id), comments: (comments ?? []).filter((comment) => comment.post_id === post.id) }));
+}
+
+export async function createPost(input: { content?: string; mediaUrl?: string | null; mediaType?: SocialMediaType | null }) {
+  const userId = await currentUserId();
+  const content = input.content?.trim() ?? '';
+
+  if (!content && !input.mediaUrl) {
+    throw new Error('Write something or add a photo before posting.');
+  }
+
+  const { data, error } = await supabase
+    .from('posts')
+    .insert({
+      author_id: userId,
+      content,
+      content_type: 'status',
+      media_url: input.mediaUrl ?? null,
+      media_type: input.mediaType ?? null,
+    })
+    .select('id, author_id, content, content_type, media_url, media_type, created_at, profiles!posts_author_id_fkey(full_name, username, avatar_url)')
+    .single();
+
+  if (error) throw error;
+  notifyFeedChanged();
+  return data;
 }
 
 export async function createStory(input: { content?: string; contentType: string; mediaUrl?: string | null }) {

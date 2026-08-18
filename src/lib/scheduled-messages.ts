@@ -16,12 +16,23 @@ export interface ScheduledMessageRecord {
   paused: boolean;
   last_sent_at?: string | null;
   last_error?: string | null;
+  timezone: string;
+  retry_count: number;
+  last_attempt_at?: string | null;
   created_at: string;
 }
 
 export interface ScheduleRecipient {
   id: string;
   name: string;
+}
+
+export function getDeviceTimeZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
 }
 
 async function requireProfileId() {
@@ -75,6 +86,7 @@ export async function saveScheduledMessage(input: {
   content: string;
   scheduledFor: Date;
   totalDays: number;
+  timeZone: string;
 }) {
   const senderId = await requireProfileId();
   const payload = {
@@ -83,12 +95,14 @@ export async function saveScheduledMessage(input: {
     content: input.content.trim(),
     scheduled_for: input.scheduledFor.toISOString(),
     total_days: input.totalDays,
+    timezone: input.timeZone,
     paused: false,
+    retry_count: 0,
     last_error: null,
     updated_at: new Date().toISOString(),
   };
   const query = input.id
-    ? supabase.from('scheduled_messages').update(payload).eq('id', input.id).eq('sender_id', senderId)
+    ? supabase.from('scheduled_messages').update({ ...payload, status: 'pending' }).eq('id', input.id).eq('sender_id', senderId)
     : supabase.from('scheduled_messages').insert({ ...payload, days_sent: 0, status: 'pending' });
   const { error } = await query;
   if (error) throw error;

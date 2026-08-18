@@ -13,6 +13,10 @@ export interface ChatRecord {
   group_name?: string | null;
   other_user?: ProfileRecord | null;
   last_message_content?: string | null;
+  last_message_sender_id?: string | null;
+  last_message_created_at?: string | null;
+  last_message_status?: 'sent' | 'delivered' | 'read' | null;
+  unread_count?: number;
   participants?: {
     profile_id: string;
     profiles?: ProfileRecord;
@@ -65,64 +69,14 @@ export async function getFriendsAndContacts(): Promise<ContactRecord[]> {
 }
 
 export async function getChatsForUser(): Promise<ChatRecord[]> {
-  const profile = await getCurrentProfile();
-  if (!profile?.id) {
-    throw new Error('No profile found');
-  }
-
-  // Get chats where user is a participant
-  const { data: chatsData, error: chatsError } = await supabase
-    .from('chats')
-    .select(
-      `id, type, name, created_at, last_message_time,
-       messages(content, created_at)
-    `
-    )
-    .order('last_message_time', { ascending: false, nullsFirst: false })
-    .limit(50);
-
-  if (chatsError) {
-    throw chatsError;
-  }
-
-  if (!chatsData) {
-    return [];
-  }
-
-  // Enrich chat records with participant data for individual chats
-  const enrichedChats = await Promise.all(
-    (chatsData as any[]).map(async (chat) => {
-      if (chat.type === 'group') {
-        return {
-          ...chat,
-          chat_type: 'group',
-          group_name: chat.name,
-          last_message_content: chat.messages?.[0]?.content || '(No messages yet)',
-          updated_at: chat.last_message_time || chat.created_at,
-        };
-      } else {
-        // For individual chats, get the other participant's profile
-        const { data: participants } = await supabase
-          .from('chat_participants')
-          .select('profile_id, profiles(id, full_name, username, avatar_url, bio_status)')
-          .eq('chat_id', chat.id)
-          .neq('profile_id', profile.id)
-          .single();
-
-        const otherUser = (participants?.profiles as unknown as ProfileRecord | null) ?? null;
-
-        return {
-          ...chat,
-          chat_type: 'individual',
-          other_user: otherUser,
-          last_message_content: chat.messages?.[0]?.content || '(No messages yet)',
-          updated_at: chat.last_message_time || chat.created_at,
-        };
-      }
-    })
-  );
-
-  return enrichedChats as ChatRecord[];
+  const { data, error } = await supabase.rpc('get_chat_summaries');
+  if (error) throw error;
+  return ((data as ChatRecord[] | null) ?? []).map((chat) => ({
+    ...chat,
+    chat_type: chat.type,
+    group_name: chat.type === 'group' ? chat.name : null,
+    updated_at: chat.last_message_time || chat.created_at,
+  }));
 }
 
 export async function createOrGetIndividualChat(participantId: string): Promise<string> {
@@ -140,7 +94,10 @@ export interface ChatRoomDetails {
   image_url?: string | null;
   allow_members_send: boolean;
   current_user_role: 'admin' | 'member';
-  participants: ProfileRecord[];
+  participants: (ProfileRecord & {
+    last_read_at?: string | null;
+    last_delivered_at?: string | null;
+  })[];
 }
 
 export interface MessageRecord {
@@ -181,6 +138,16 @@ export async function getUnreadMessageCount(): Promise<number> {
 
 export async function markChatRead(chatId: string): Promise<void> {
   const { error } = await supabase.rpc('mark_chat_read', { target_chat_id: chatId });
+  if (error) throw error;
+}
+
+export async function markChatDelivered(chatId: string): Promise<void> {
+  const { error } = await supabase.rpc('mark_chat_delivered', { target_chat_id: chatId });
+  if (error) throw error;
+}
+
+export async function markAllChatsDelivered(): Promise<void> {
+  const { error } = await supabase.rpc('mark_all_chats_delivered');
   if (error) throw error;
 }
 
