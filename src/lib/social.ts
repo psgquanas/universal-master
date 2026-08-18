@@ -26,9 +26,24 @@ export async function getConnectedProfiles(userId: string) {
 
 export async function getNotifications() {
   const userId = await currentUserId();
-  const { data, error } = await supabase.from('notifications').select('*, actor:profiles!notifications_actor_id_fkey(full_name, username, avatar_url)').eq('recipient_id', userId).order('created_at', { ascending: false }).limit(50);
+  const { data, error } = await supabase.from('notifications').select('*, actor:profiles!notifications_actor_id_fkey(full_name, username, avatar_url), friend_request:friend_requests!notifications_friend_request_id_fkey(id, status, sender_id, recipient_id)').eq('recipient_id', userId).order('created_at', { ascending: false }).limit(50);
   if (error) throw error;
   return data ?? [];
+}
+
+export async function sendFriendRequest(recipientId: string) {
+  const { data, error } = await supabase.rpc('send_friend_request', { target_user_id: recipientId });
+  if (error) throw error;
+  return data as string;
+}
+
+export async function respondToFriendRequest(requestId: string, action: 'accepted' | 'declined') {
+  const { data, error } = await supabase.rpc('respond_to_friend_request', {
+    target_request_id: requestId,
+    response: action,
+  });
+  if (error) throw error;
+  return data as 'accepted' | 'declined';
 }
 
 export async function markNotificationsRead(ids?: string[]) {

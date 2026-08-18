@@ -4,16 +4,16 @@ import { ActivityIndicator, Image, Platform, ScrollView, StatusBar, StyleSheet, 
 
 import { BottomTabInset, Fonts } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-import { getContactsPermission } from '@/hooks/use-permissions';
+import { getContactsPermission, requestContactsPermission } from '@/hooks/use-permissions';
 import { useTheme } from '@/hooks/use-theme';
 import { getCurrentProfile } from '@/lib/profile';
+import { respondToFriendRequest, sendFriendRequest } from '@/lib/social';
 import { supabase } from '@/lib/supabase';
 
 type Suggestion = {
   id: string;
   name: string;
   avatar: string | null;
-  mutual: number;
   status: 'none' | 'pending';
   bio?: string | null;
   username?: string | null;
@@ -34,7 +34,6 @@ type ProfileRow = {
   avatar_url?: string | null;
   username?: string | null;
   bio_status?: string | null;
-  phone?: string | null;
 };
 
 function shuffle<T>(items: T[]) {
@@ -85,10 +84,11 @@ export default function FindFriendsScreen() {
       try {
         const currentProfile = await getCurrentProfile();
         const profileId = currentProfile?.id;
+        if (!profileId) throw new Error('A profile is required to find friends.');
 
         const { data, error } = await supabase
           .from('profiles')
-          .select('id, full_name, avatar_url, username, bio_status, phone')
+          .select('id, full_name, avatar_url, username, bio_status')
           .neq('id', profileId ?? '')
           .order('created_at', { ascending: false })
           .limit(50);
@@ -127,46 +127,51 @@ export default function FindFriendsScreen() {
           id: profile.id,
           name: profile.full_name?.trim() || profile.username || 'New user',
           avatar: profile.avatar_url ?? null,
-          mutual: Math.floor(Math.random() * 9) + 1,
           status: 'none' as const,
           bio: profile.bio_status,
           username: profile.username,
           source: 'random' as const,
         }));
 
-        const contactsPermission = await getContactsPermission();
+        let contactsPermission = await getContactsPermission();
+        if (contactsPermission === 'undetermined') {
+          contactsPermission = await requestContactsPermission();
+        }
         let matchedContacts: Suggestion[] = [];
 
-        if (contactsPermission === 'granted') {
+        if (contactsPermission === 'granted' && Platform.OS !== 'web') {
           try {
-            const contactsModule = await import('expo-contacts');
-            const Contacts = (contactsModule as any).default ?? contactsModule;
-            const { data: contactsData } = await Contacts.getContactsAsync({
-              fields: [Contacts.Fields.PhoneNumbers],
+            const { Contact, ContactField } = await import('expo-contacts');
+            const contactsData = await Contact.getAllDetails([
+              ContactField.FULL_NAME,
+              ContactField.PHONES,
+            ] as const);
+            const contactNamesByPhone = new Map<string, string>();
+
+            contactsData.forEach((contact) => {
+              contact.phones.forEach((phoneEntry) => {
+                const phone = normalizePhone(phoneEntry.number);
+                if (phone) contactNamesByPhone.set(phone, contact.fullName?.trim() || 'Contact');
+              });
             });
 
-            const normalizedProfiles = new Map(suggestionProfiles.map((profile) => [normalizePhone(profile.phone), profile]));
+            const contactPhones = [...contactNamesByPhone.keys()];
+            const { data: contactProfiles, error: contactProfilesError } = contactPhones.length
+              ? await supabase.rpc('find_profiles_by_phone', { contact_phones: contactPhones })
+              : { data: [], error: null };
+            if (contactProfilesError) throw contactProfilesError;
+
             const seen = new Set<string>();
 
-            matchedContacts = (contactsData ?? [])
-              .flatMap((contact: any) => (contact.phoneNumbers ?? []).map((entry: any) => ({
-                contactName: `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim(),
-                phone: entry.number,
-              })))
-              .map((entry: { phone: string; contactName: string }) => ({
-                phone: normalizePhone(entry.phone),
-                contactName: entry.contactName || 'Contact',
-              }))
-              .filter(({ phone }: { phone: string }) => phone)
-              .map(({ phone, contactName }: { phone: string; contactName: string }) => {
-                const matchedProfile = normalizedProfiles.get(phone);
-                if (!matchedProfile || seen.has(matchedProfile.id)) return null;
+            matchedContacts = ((contactProfiles as ProfileRow[] | null) ?? [])
+              .filter((matchedProfile) => !connectedIds.has(matchedProfile.id) && !pendingIds.has(matchedProfile.id) && !incomingSenderIds.has(matchedProfile.id))
+              .map((matchedProfile) => {
+                if (seen.has(matchedProfile.id)) return null;
                 seen.add(matchedProfile.id);
                 return {
                   id: matchedProfile.id,
-                  name: matchedProfile.full_name?.trim() || matchedProfile.username || contactName,
+                  name: matchedProfile.full_name?.trim() || matchedProfile.username || 'Contact',
                   avatar: matchedProfile.avatar_url ?? null,
-                  mutual: 3,
                   status: 'none' as const,
                   bio: matchedProfile.bio_status,
                   username: matchedProfile.username,
@@ -180,7 +185,7 @@ export default function FindFriendsScreen() {
         }
 
         if (active) {
-          setSuggestions(randomProfiles);
+          setSuggestions(matchedContacts.length === 0 ? randomProfiles : []);
           setContactsOnApp(matchedContacts);
           setIncomingRequests(incoming);
         }
@@ -195,8 +200,14 @@ export default function FindFriendsScreen() {
 
     loadSuggestions();
 
+    const channel = supabase
+      .channel('find-friends-requests')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'friend_requests' }, () => { void loadSuggestions(); })
+      .subscribe();
+
     return () => {
       active = false;
+      void supabase.removeChannel(channel);
     };
   }, []);
 
@@ -211,13 +222,9 @@ export default function FindFriendsScreen() {
 
     if (!target) return;
 
-    const { error } = await supabase.from('friend_requests').insert({
-      sender_id: profileId,
-      recipient_id: id,
-      status: 'pending',
-    });
-
-    if (error) {
+    try {
+      await sendFriendRequest(id);
+    } catch (error) {
       console.warn('[find-friends] request insert failed', error);
       return;
     }
@@ -231,29 +238,12 @@ export default function FindFriendsScreen() {
   };
 
   const respondToRequest = async (requestId: string, action: 'accept' | 'decline') => {
-    const currentProfile = await getCurrentProfile();
-    if (!currentProfile?.id) return;
-
-    if (action === 'decline') {
-      await supabase.from('friend_requests').delete().eq('id', requestId);
+    try {
+      await respondToFriendRequest(requestId, action === 'accept' ? 'accepted' : 'declined');
       setIncomingRequests((items) => items.filter((item) => item.id !== requestId));
-      return;
+    } catch (error) {
+      console.warn('[find-friends] request response failed', error);
     }
-
-    const { data: requestRow, error: fetchError } = await supabase
-      .from('friend_requests')
-      .select('sender_id, recipient_id')
-      .eq('id', requestId)
-      .maybeSingle();
-
-    if (fetchError || !requestRow) return;
-
-    await supabase.from('friend_requests').update({ status: 'accepted', updated_at: new Date().toISOString() }).eq('id', requestId);
-    await supabase.from('friendships').insert({
-      user_a: requestRow.sender_id,
-      user_b: requestRow.recipient_id,
-    });
-    setIncomingRequests((items) => items.filter((item) => item.id !== requestId));
   };
 
   const filteredSuggestions = suggestions.filter((item) => item.name.toLowerCase().includes(query.trim().toLowerCase()));
@@ -340,21 +330,21 @@ export default function FindFriendsScreen() {
           </>
         ) : null}
 
-        <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Suggested for you</Text>
-          <View style={styles.countPill}><Text style={styles.countPillText}>{filteredSuggestions.length}</Text></View>
-        </View>
-        {filteredSuggestions.length === 0 ? (
-          <Text style={styles.emptyRowText}>No suggestions match your search right now.</Text>
-        ) : (
-          filteredSuggestions.map((suggestion) => {
+        {contactsOnApp.length === 0 ? <>
+          <View style={styles.sectionRow}>
+            <Text style={styles.sectionTitle}>Suggested for you</Text>
+            <View style={styles.countPill}><Text style={styles.countPillText}>{filteredSuggestions.length}</Text></View>
+          </View>
+          {filteredSuggestions.length === 0 ? (
+            <Text style={styles.emptyRowText}>No suggestions match your search right now.</Text>
+          ) : filteredSuggestions.map((suggestion) => {
             const pending = suggestion.status === 'pending';
             return (
               <View key={suggestion.id} style={styles.friendRow}>
                 <Avatar name={suggestion.name} source={suggestion.avatar} styles={styles} size={50} />
                 <View style={styles.friendCopy}>
                   <Text style={styles.name}>{suggestion.name}</Text>
-                  <Text style={styles.meta}>{suggestion.mutual} mutual connection{suggestion.mutual !== 1 ? 's' : ''}</Text>
+                  <Text style={styles.meta}>Discover someone new on Universal</Text>
                 </View>
                 <TouchableOpacity style={pending ? styles.pendingButton : styles.connectButton} onPress={() => toggleConnect(suggestion.id, 'suggestions')} activeOpacity={0.85}>
                   {!pending && <UserPlus size={14} color="#fff" strokeWidth={2.5} />}
@@ -362,8 +352,8 @@ export default function FindFriendsScreen() {
                 </TouchableOpacity>
               </View>
             );
-          })
-        )}
+          })}
+        </> : null}
 
         <View style={styles.footerHint}>
           <Text style={styles.footerHintText}>We mix people from your contacts and new profiles from the app so discovery feels familiar and social.</Text>
