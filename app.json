@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "frontend",
+    "name": "Universal Chat",
     "slug": "frontend",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -8,7 +8,8 @@
     "scheme": "frontend",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "icon": "./assets/expo.icon"
+      "icon": "./assets/expo.icon",
+      "bundleIdentifier": "com.chatapp.bhado"
     },
     "android": {
       "adaptiveIcon": {
@@ -18,19 +19,7 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.chatapp.bhado",
-      "permissions": [
-        "android.permission.READ_CONTACTS",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.READ_MEDIA_AUDIO",
-        "android.permission.VIBRATE",
-        "android.permission.RECEIVE_BOOT_COMPLETED"
-      ]
+      "package": "com.chatapp.bhado"
     },
     "web": {
       "output": "static",
@@ -51,35 +40,43 @@
       [
         "expo-contacts",
         {
-          "contactsPermission": "Allow ChatApp to access your contacts to find friends already using the app."
+          "contactsPermission": "Allow Universal Chat to access your contacts to find friends already using the app."
         }
       ],
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow ChatApp to access your camera to take photos and videos.",
-          "microphonePermission": "Allow ChatApp to access your microphone to record voice messages and video calls.",
+          "cameraPermission": "Allow Universal Chat to access your camera to take photos and videos.",
+          "microphonePermission": "Allow Universal Chat to access your microphone to record voice messages.",
           "recordAudioAndroid": true
         }
       ],
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow ChatApp to access your photos and videos to share media.",
-          "savePhotosPermission": "Allow ChatApp to save received photos to your gallery.",
+          "photosPermission": "Allow Universal Chat to access your photos and videos to share media.",
+          "savePhotosPermission": "Allow Universal Chat to save received photos to your gallery.",
           "isAccessMediaLocationEnabled": true
         }
       ],
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow ChatApp to choose a profile photo or status image.",
-          "cameraPermission": "Allow ChatApp to take a profile photo or status image."
+          "photosPermission": "Allow Universal Chat to choose a profile photo or post image.",
+          "cameraPermission": "Allow Universal Chat to take a profile photo or post image."
         }
       ],
       "expo-audio",
-      "expo-notifications",
-      "expo-web-browser"
+      [
+        "expo-notifications",
+        {
+          "defaultChannel": "messages",
+          "color": "#4361EE"
+        }
+      ],
+      "expo-web-browser",
+      "expo-asset",
+      "expo-image"
     ],
     "experiments": {
       "typedRoutes": true,

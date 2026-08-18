@@ -21,11 +21,7 @@ type BlockedContact = {
     avatar?: string;
 };
 
-const INITIAL_BLOCKED: BlockedContact[] = [
-    { id: '1', name: 'Daniel Owusu' },
-    { id: '2', name: 'Ama Serwaa' },
-    { id: '3', name: 'Kwame Asante' },
-];
+const INITIAL_BLOCKED: BlockedContact[] = [];
 
 const TERMS_TEXT = `1. Acceptance of Terms
 By using this app, you agree to be bound by these Terms and Conditions. If you do not agree, please discontinue use of the app.

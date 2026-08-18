@@ -16,7 +16,7 @@
  * ──────────────────────────────────────────────────────────────── */
 
 import { useFocusEffect, useRouter } from 'expo-router';
-import { Bell, ChevronRight, Edit3, HelpCircle, KeyRound, LockKeyhole, LogOut, Moon, Sun, UserPlus } from 'lucide-react-native';
+import { ChevronRight, Edit3, HelpCircle, KeyRound, LockKeyhole, LogOut, Moon, Sun } from 'lucide-react-native';
 import React, { useCallback, useEffect, useState } from 'react';
 import { ActivityIndicator, Alert, Animated, Easing, Image, Platform, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -73,9 +73,8 @@ export default function ProfileScreen() {
 
   const rows = [
     { icon: KeyRound, title: 'Account & identity', sub: 'Verified phone and account security', route: '/(public)/setting_account' as const },
-    { icon: LockKeyhole, title: 'Privacy studio', sub: 'Visibility and message controls', route: '/(public)/setting_privacy' as const },
-    { icon: Bell, title: 'Notifications', sub: 'Moments worth interrupting for', route: '/(public)/setting_notification' as const },
-    { icon: HelpCircle, title: 'Help & feedback', sub: 'Support and product notes', route: '/(public)/setting_help' as const },
+    { icon: LockKeyhole, title: 'Privacy & terms', sub: 'Legal information and privacy controls', route: '/(public)/setting_privacy' as const },
+    { icon: HelpCircle, title: 'Privacy policy', sub: 'How Universal Chat handles your data', route: '/(public)/setting_help' as const },
   ];
 
   const details = [
@@ -263,19 +262,6 @@ export default function ProfileScreen() {
           </View>
 
           {/* ── Invite ── */}
-          <TouchableOpacity activeOpacity={0.8} onPress={() => router.push('/(public)/setting_invite_friend')}>
-            <GradientWrapper
-              colors={[hexToRgba(theme.primary, dark ? 0.24 : 0.14), hexToRgba(theme.primary, 0.02)]}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 0 }}
-              style={[styles.invite, { borderColor: hexToRgba(theme.primary, 0.3) }]}
-            >
-              <UserPlus size={18} color={theme.primary} />
-              <Text style={[styles.inviteText, { color: theme.primary }]}>Invite someone to Orbit</Text>
-              <ChevronRight size={18} color={theme.primary} />
-            </GradientWrapper>
-          </TouchableOpacity>
-
           <TouchableOpacity
             style={[styles.logoutButton, { borderColor: '#EF444455', backgroundColor: hexToRgba('#EF4444', dark ? 0.12 : 0.07) }]}
             onPress={handleLogout}

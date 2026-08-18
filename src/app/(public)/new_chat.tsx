@@ -66,7 +66,7 @@ export default function NewChatScreen() {
       <View style={styles.contactInfo}>
         <Text style={styles.contactName}>{item.full_name || item.username || 'Unknown'}</Text>
         <Text style={styles.contactStatus} numberOfLines={1}>
-          {item.bio_status || 'Hey there! I am using ChatApp'}
+          {item.bio_status || 'Hey there! I am using Universal Chat'}
         </Text>
       </View>
       {creatingChat === item.id && <ActivityIndicator size="small" color={theme.primary} />}

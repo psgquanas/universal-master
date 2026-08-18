@@ -2,6 +2,7 @@ import { Fonts } from '@/constants/theme';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/hooks/use-theme';
 import {
+    deleteCurrentAccount,
     getCurrentProfile,
     isValidInternationalPhone,
     normalizePhoneNumber,
@@ -10,10 +11,11 @@ import {
     verifyPhoneChangeEmailCode,
 } from '@/lib/profile';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Check, CheckCircle2, Mail, Phone, RefreshCw, ShieldCheck } from 'lucide-react-native';
+import { ArrowLeft, Check, CheckCircle2, Mail, Phone, RefreshCw, ShieldCheck, Trash2 } from 'lucide-react-native';
 import { useEffect, useState } from 'react';
 import {
     ActivityIndicator,
+    Alert,
     KeyboardAvoidingView,
     Platform,
     ScrollView,
@@ -43,6 +45,7 @@ export default function SettingsAccountScreen() {
     const [status, setStatus] = useState<string | null>(null);
     const [sending, setSending] = useState(false);
     const [verifying, setVerifying] = useState(false);
+    const [deleting, setDeleting] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -104,6 +107,31 @@ export default function SettingsAccountScreen() {
         setVerificationCode('');
         setError(null);
         setStatus(null);
+    };
+
+    const confirmDeleteAccount = () => {
+        Alert.alert(
+            'Delete your account?',
+            'This permanently removes your profile, chats, posts, scheduled messages, and account data. This cannot be undone.',
+            [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                    text: 'Delete permanently',
+                    style: 'destructive',
+                    onPress: async () => {
+                        if (deleting) return;
+                        setDeleting(true);
+                        try {
+                            await deleteCurrentAccount();
+                            router.replace('/(auth)');
+                        } catch (deleteError) {
+                            setDeleting(false);
+                            Alert.alert('Account not deleted', deleteError instanceof Error ? deleteError.message : 'Please try again.');
+                        }
+                    },
+                },
+            ],
+        );
     };
 
     return (
@@ -251,6 +279,18 @@ export default function SettingsAccountScreen() {
                             {error ? <Text selectable style={styles.errorText}>{error}</Text> : null}
                             {status && step !== 'complete' ? <Text selectable style={styles.statusText}>{status}</Text> : null}
                         </View>
+
+                        <Text style={[styles.sectionLabel, styles.dangerLabel, { color: theme.textSecondary }]}>DANGER ZONE</Text>
+                        <View style={[styles.dangerCard, { backgroundColor: theme.backgroundElement, borderColor: '#EF444455' }]}>
+                            <View style={styles.dangerCopy}>
+                                <Text style={[styles.cardTitle, { color: theme.text }]}>Delete account</Text>
+                                <Text style={[styles.cardSubtitle, { color: theme.textSecondary }]}>Permanently delete your Universal Chat account and associated data.</Text>
+                            </View>
+                            <TouchableOpacity style={styles.deleteButton} disabled={deleting} onPress={confirmDeleteAccount}>
+                                {deleting ? <ActivityIndicator size="small" color="#EF4444" /> : <Trash2 size={17} color="#EF4444" />}
+                                <Text style={styles.deleteButtonText}>{deleting ? 'Deleting...' : 'Delete'}</Text>
+                            </TouchableOpacity>
+                        </View>
                     </View>
                 </ScrollView>
             </KeyboardAvoidingView>
@@ -280,6 +320,7 @@ const styles = StyleSheet.create({
     contentWidth: { width: '100%', maxWidth: 620, alignSelf: 'center' },
     sectionLabel: { fontSize: 11, fontFamily: Fonts?.sansBold, letterSpacing: 1.1, marginBottom: 9, marginLeft: 4 },
     changeLabel: { marginTop: 28 },
+    dangerLabel: { marginTop: 28 },
     securityCard: { borderRadius: 20, padding: 16, flexDirection: 'row', alignItems: 'flex-start', gap: 13 },
     securityIcon: { width: 46, height: 46, borderRadius: 15, alignItems: 'center', justifyContent: 'center' },
     securityCopy: { flex: 1 },
@@ -315,4 +356,8 @@ const styles = StyleSheet.create({
     successIcon: { width: 64, height: 64, borderRadius: 22, backgroundColor: '#DCFCE7', alignItems: 'center', justifyContent: 'center' },
     successTitle: { fontFamily: Fonts?.sansBold, fontSize: 19, marginTop: 14 },
     successBody: { fontFamily: Fonts?.sans, fontSize: 13, textAlign: 'center', lineHeight: 19, marginTop: 7 },
+    dangerCard: { borderRadius: 20, borderWidth: 1, padding: 16, flexDirection: 'row', alignItems: 'center', gap: 14 },
+    dangerCopy: { flex: 1 },
+    deleteButton: { minHeight: 42, borderRadius: 21, paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, backgroundColor: '#EF444414' },
+    deleteButtonText: { color: '#EF4444', fontFamily: Fonts?.sansBold, fontSize: 12.5 },
 });

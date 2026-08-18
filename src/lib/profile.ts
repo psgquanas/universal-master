@@ -126,3 +126,10 @@ export async function verifyPhoneChangeEmailCode(token: string, newPhone: string
   if (metadataError) console.warn('[profile] phone saved but auth metadata sync failed', metadataError);
   return profile;
 }
+
+export async function deleteCurrentAccount(): Promise<void> {
+  const { data, error } = await supabase.rpc('delete_current_account');
+  if (error) throw error;
+  if (data !== true) throw new Error('Your account could not be deleted.');
+  await supabase.auth.signOut({ scope: 'local' });
+}
